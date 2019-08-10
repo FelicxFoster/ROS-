@@ -1,0 +1,124 @@
+#include <ros/ros.h>
+//尽量ros头文件先编译
+#include "usbcan_test/test.h"
+#include "ECanVci.h"
+#include <iostream>
+#include <stdio.h>
+#include <string.h>
+
+
+#define VCI_USBCAN2A  3
+#define STATUS_OK  1
+
+using namespace std;
+
+int main(int argc, char* argv[])
+{
+
+    if (!OpenDevice(3,0,0)){
+        cout<<"调用 OpenDevice出错"<<endl;
+        // cout<<OpenDevice(3,0,0)<<endl;
+    }
+    else
+    {
+        cout<<"调用 OpenDevice成功"<<endl;
+    }
+
+    // 初始0通道
+    INIT_CONFIG config;
+    config.AccCode = 0x00000000;
+    config.AccMask = 0xffffffff;
+    config.Filter = 0;
+    config.Mode = 0;
+    config.Timing0 = 0x00;
+    config.Timing1 = 0x1c;
+
+    CAN_OBJ can;
+    ERR_INFO errinfo; 
+    // VCI_CAN_OBJ vci_can_obj;
+
+    if (!InitCAN(VCI_USBCAN2A, 0, 0, &config)){
+        cout<<"调用 InitCAN出错"<<endl;
+    }
+    else
+    {
+        cout<<"调用 InitCAN成功"<<endl;
+    }
+
+    if (!StartCAN(VCI_USBCAN2A, 0, 0)){
+        cout<<"调用 StartCAN出错"<<endl;
+    }
+    else
+    {
+        cout<<"调用 StartCAN成功"<<endl;
+    }
+
+    can.DataLen =8;
+    can.RemoteFlag =0;
+    can.ExternFlag =0;
+    can.SendType =0;
+    can.ID =0;
+    can.Data[0] = 52;
+    can.Data[1] =23;
+    int ret = Transmit(VCI_USBCAN2A,0,0,&can,1);
+    cout<<"ret = "<<ret<<endl;
+
+    ros::init(argc, argv, "usbcan_publisher");
+    ros::NodeHandle nh;
+    ros::Publisher usbcan_pub = nh.advertise<usbcan_test::test>("can_value", 10);
+    ros::Rate loop_rate(10);
+
+    int count = 0;
+
+    while (ros::ok)
+    {
+        usbcan_test::test msg;
+        
+        int ret = Receive(VCI_USBCAN2A, 0, 0, &can, 1, 0);
+        while (ret <= 0){
+            ret = Receive(VCI_USBCAN2A, 0, 0, &can, 1, 0);
+            ReadErrInfo(VCI_USBCAN2A,0,0,&errinfo);
+        }
+        if (ret > 0){
+            count++;
+            // cout<<endl;
+            // cout<< "ID =" <<(long)can.ID<<endl;
+            // cout<< "DataLen =" <<(long)can.DataLen<<endl;
+
+            msg.header.seq = count;
+            msg.header.stamp = ros::Time::now();
+            msg.header.frame_id = "GetCanValue";
+            msg.id = (long)can.ID;
+            msg.len = (long)can.DataLen;
+            cout<< "ID =" << msg.id <<endl;
+            cout<< "DataLen =" << msg.len <<endl;
+
+            for(int j =0;j<8;j++){
+                // cout<< "Data[" << j <<"] = "<<(long)can.Data[j]<<endl;
+                msg.data[j] = (long)can.Data[j];
+                cout<< "Data[" << j <<"] = "<<msg.data[j]<<endl;
+            }
+            cout<< "-----" << count-1 << "-----" <<endl;
+
+            usbcan_pub.publish(msg);
+
+
+            ros::spinOnce();
+            loop_rate.sleep();
+            
+
+        }
+
+        
+    }
+    return 0;
+    
+}
+
+
+
+
+
+
+
+
